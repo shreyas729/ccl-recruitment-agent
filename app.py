@@ -170,12 +170,12 @@ def upload_to_s3(file_bytes: bytes, filename: str) -> str:
             region_name='us-east-1'
         )
         s3.put_object(
-            Bucket='ccl-resume-bucket-2024',
+            Bucket='ccl-resume-bucket-2026',
             Key=f"resumes/{filename}",
             Body=file_bytes,
             ContentType='application/pdf'
         )
-        return f"s3://ccl-resume-bucket-2024/resumes/{filename}"
+        return f"s3://ccl-resume-bucket-2026/resumes/{filename}"
     except Exception as e:
         st.warning(f"S3 upload skipped: {e}")
         return ""
