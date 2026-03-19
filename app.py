@@ -10,6 +10,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import boto3
 from botocore.exceptions import NoCredentialsError
+import psycopg2
+from datetime import datetime
 import streamlit as st
 from agno.agent import Agent
 from agno.models.groq import Groq
@@ -132,6 +134,8 @@ def init_session_state():
         'mode': None,
         'aws_access_key': "",
         'aws_secret_key': "",
+        'rds_host': "",
+        'rds_password': "",
         'job_postings': {},
         'applications': {},
         'analyses': {},
@@ -179,6 +183,50 @@ def upload_to_s3(file_bytes: bytes, filename: str) -> str:
     except Exception as e:
         st.warning(f"S3 upload skipped: {e}")
         return ""
+    
+def log_to_rds(candidate_name: str, job_title: str, 
+               weighted_score: float, recommendation: str,
+               decision_reason: str, risk_level: str):
+    try:
+        conn = psycopg2.connect(
+            host=st.session_state.get('rds_host', ''),
+            database='postgres',
+            user='postgres',
+            password=st.session_state.get('rds_password', ''),
+            port=5432,
+            connect_timeout=5
+        )
+        cur = conn.cursor()
+        
+        # Create table if not exists
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS analyses (
+                id SERIAL PRIMARY KEY,
+                candidate_name VARCHAR(100),
+                job_title VARCHAR(100),
+                weighted_score FLOAT,
+                recommendation VARCHAR(50),
+                decision_reason TEXT,
+                risk_level VARCHAR(20),
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Insert record
+        cur.execute("""
+            INSERT INTO analyses 
+            (candidate_name, job_title, weighted_score, recommendation, decision_reason, risk_level)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (candidate_name, job_title, weighted_score, 
+              recommendation, decision_reason, risk_level))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        return True
+    except Exception as e:
+        st.warning(f"RDS log skipped: {e}")
+        return False
 
 def send_email(to_email: str, subject: str, body: str) -> bool:
     try:
@@ -390,6 +438,17 @@ def run_full_analysis(job_id: str):
             decision = run_hiring_manager(a1, a2_text, red_flags, weighted_score, job)
             s.update(label=f"Decision complete — {cand['name']}", state="complete")
 
+        # Log to RDS
+        log_to_rds(
+            candidate_name=cand['name'],
+            job_title=job['title'],
+            weighted_score=weighted_score,
+            recommendation=decision.get('recommendation', ''),
+            decision_reason=decision.get('decision_reason', ''),
+            risk_level=red_flags.get('risk_level', 'Low')
+        )
+
+        
         all_results.append({
             "name": cand['name'], "email": cand.get('email', ''),
             "a1": a1, "a2": a2_text, "scores": a2_scores,
@@ -489,8 +548,12 @@ elif st.session_state.mode == 'recruiter':
             st.markdown('<div class="card"><div class="card-title">AWS Settings</div>', unsafe_allow_html=True)
             aws_key = st.text_input("AWS Access Key ID", type="password", value=st.session_state.aws_access_key)
             aws_secret = st.text_input("AWS Secret Access Key", type="password", value=st.session_state.aws_secret_key)
+            rds_host = st.text_input("RDS Endpoint", placeholder="xxxx.rds.amazonaws.com", value=st.session_state.rds_host)
+            rds_password = st.text_input("RDS Password", type="password", value=st.session_state.rds_password)
             if aws_key: st.session_state.aws_access_key = aws_key
             if aws_secret: st.session_state.aws_secret_key = aws_secret
+            if rds_host: st.session_state.rds_host = rds_host
+            if rds_password: st.session_state.rds_password = rds_password
             st.markdown('</div>', unsafe_allow_html=True)
 
         if st.button("Save & Continue"):
