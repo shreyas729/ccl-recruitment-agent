@@ -466,20 +466,15 @@ elif st.session_state.mode == 'recruiter':
                 st.session_state.r_screen = 'setup'
                 st.rerun()
 
+   
     # ── SETUP ─────────────────────────────────────────────────────────────────
     if st.session_state.r_screen == 'setup' or not st.session_state.groq_api_key:
         st.markdown("### Setup")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown('<div class="card"><div class="card-title">AI Settings</div>', unsafe_allow_html=True)
             groq_key = st.text_input("Groq API Key", type="password", placeholder="gsk_...", value=st.session_state.groq_api_key)
             if groq_key: st.session_state.groq_api_key = groq_key
-            st.markdown('</div>', unsafe_allow_html=True)
-            st.markdown('<div class="card"><div class="card-title">AWS Settings</div>', unsafe_allow_html=True)
-            aws_key = st.text_input("AWS Access Key ID", type="password", value=st.session_state.aws_access_key)
-            aws_secret = st.text_input("AWS Secret Access Key", type="password", value=st.session_state.aws_secret_key)
-            if aws_key: st.session_state.aws_access_key = aws_key
-            if aws_secret: st.session_state.aws_secret_key = aws_secret
             st.markdown('</div>', unsafe_allow_html=True)
         with col2:
             st.markdown('<div class="card"><div class="card-title">Company & Email</div>', unsafe_allow_html=True)
@@ -489,6 +484,13 @@ elif st.session_state.mode == 'recruiter':
             if company: st.session_state.company_name = company
             if esender: st.session_state.email_sender = esender
             if epass: st.session_state.email_password = epass
+            st.markdown('</div>', unsafe_allow_html=True)
+        with col3:
+            st.markdown('<div class="card"><div class="card-title">AWS Settings</div>', unsafe_allow_html=True)
+            aws_key = st.text_input("AWS Access Key ID", type="password", value=st.session_state.aws_access_key)
+            aws_secret = st.text_input("AWS Secret Access Key", type="password", value=st.session_state.aws_secret_key)
+            if aws_key: st.session_state.aws_access_key = aws_key
+            if aws_secret: st.session_state.aws_secret_key = aws_secret
             st.markdown('</div>', unsafe_allow_html=True)
 
         if st.button("Save & Continue"):
