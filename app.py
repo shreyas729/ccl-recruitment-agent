@@ -8,7 +8,8 @@ import tempfile
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-
+import boto3
+from botocore.exceptions import NoCredentialsError
 import streamlit as st
 from agno.agent import Agent
 from agno.models.groq import Groq
@@ -129,6 +130,8 @@ def init_session_state():
         'groq_api_key': "",
         'email_sender': "", 'email_password': "", 'company_name': "HireAI",
         'mode': None,
+        'aws_access_key': "",
+        'aws_secret_key': "",
         'job_postings': {},
         'applications': {},
         'analyses': {},
@@ -156,6 +159,25 @@ def extract_text_from_pdf(pdf_file) -> str:
         return "".join(page.extract_text() for page in pdf_reader.pages)
     except Exception as e:
         st.error(f"Error reading PDF: {e}")
+        return ""
+    
+def upload_to_s3(file_bytes: bytes, filename: str) -> str:
+    try:
+        s3 = boto3.client(
+            's3',
+            aws_access_key_id=st.session_state.get('aws_access_key', ''),
+            aws_secret_access_key=st.session_state.get('aws_secret_key', ''),
+            region_name='us-east-1'
+        )
+        s3.put_object(
+            Bucket='ccl-resume-bucket-2024',
+            Key=f"resumes/{filename}",
+            Body=file_bytes,
+            ContentType='application/pdf'
+        )
+        return f"s3://ccl-resume-bucket-2024/resumes/{filename}"
+    except Exception as e:
+        st.warning(f"S3 upload skipped: {e}")
         return ""
 
 def send_email(to_email: str, subject: str, body: str) -> bool:
@@ -452,6 +474,12 @@ elif st.session_state.mode == 'recruiter':
             st.markdown('<div class="card"><div class="card-title">AI Settings</div>', unsafe_allow_html=True)
             groq_key = st.text_input("Groq API Key", type="password", placeholder="gsk_...", value=st.session_state.groq_api_key)
             if groq_key: st.session_state.groq_api_key = groq_key
+            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown('<div class="card"><div class="card-title">AWS Settings</div>', unsafe_allow_html=True)
+            aws_key = st.text_input("AWS Access Key ID", type="password", value=st.session_state.aws_access_key)
+            aws_secret = st.text_input("AWS Secret Access Key", type="password", value=st.session_state.aws_secret_key)
+            if aws_key: st.session_state.aws_access_key = aws_key
+            if aws_secret: st.session_state.aws_secret_key = aws_secret
             st.markdown('</div>', unsafe_allow_html=True)
         with col2:
             st.markdown('<div class="card"><div class="card-title">Company & Email</div>', unsafe_allow_html=True)
@@ -863,13 +891,20 @@ elif st.session_state.mode == 'candidate':
             else:
                 resume_text = extract_text_from_pdf(pdf)
                 if resume_text:
+                    pdf.seek(0)
+                    s3_url = upload_to_s3(
+                        pdf.read(),
+                        f"{st.session_state.c_name.replace(' ','_')}_{job_id}.pdf"
+                    )
                     st.session_state.applications[job_id].append({
                         "name": st.session_state.c_name,
                         "email": st.session_state.c_email,
-                        "resume_text": resume_text
+                        "resume_text": resume_text,
+                        "s3_url": s3_url
                     })
                     st.session_state.c_screen = 'submitted'
                     st.rerun()
+
 
     # ── SUBMITTED ─────────────────────────────────────────────────────────────
     elif st.session_state.c_screen == 'submitted':
